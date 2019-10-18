@@ -89,7 +89,7 @@ func search(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	scanner := bufio.NewScanner(f)
+	scanner := getScanner(f)
 	scanCount := 0
 	matchCount := 0
 	var buffer []byte
@@ -104,6 +104,9 @@ func search(_ *cobra.Command, _ []string) error {
 		scanCount++
 	}
 	bar.Finish()
+	if err := scanner.Err(); err != nil {
+		return errors.NewExecutionError("error scanning file: %s", err)
+	}
 	fmt.Printf("Scanned %d lines, matched %d lines\n", scanCount, matchCount)
 	if buffer != nil {
 		if err := ioutil.WriteFile(outputFile, buffer, 0644); err != nil {
@@ -157,6 +160,13 @@ func fileSize(f *os.File) (int64, error) {
 		return 0, errors.NewExecutionError("unable to get log file info: %s", err)
 	}
 	return fi.Size(), nil
+}
+
+func getScanner(f *os.File) *bufio.Scanner {
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+	return scanner
 }
 
 func parseTime(line []byte) (time.Time, error) {
