@@ -40,25 +40,25 @@ var searchCMD = &cobra.Command{
 	Short:   "Search log file for matching attributes",
 	PreRunE: validateFlags,
 	RunE:    search,
-	Example: "  nrlp search -f mylog.log --level error\n  nrlp search -f mylog.log --custom key=value",
+	Example: searchExamples(),
 }
 
 func SearchCMD() *cobra.Command {
 	searchCMD.Flags().StringVarP(&filename, "file", "f", "", "log filepath to search")
-	searchCMD.Flags().StringVarP(&level, "level", "l", "", "log level search attribute")
+	searchCMD.Flags().StringVarP(&level, "level", "l", "", "match lines with log level")
 	searchCMD.Flags().StringVarP(
 		&component,
 		"component",
 		"c",
 		"",
-		"component name search attribute",
+		"match lines with component",
 	)
 	searchCMD.Flags().StringVarP(
 		&customSearch,
 		"custom",
 		"q",
 		"",
-		"custom search attributes",
+		"match lines with custom substring",
 	)
 	searchCMD.Flags().StringVarP(
 		&outputFile,
@@ -231,4 +231,17 @@ func getStringInBetween(str string, start string, end string) string {
 		return ""
 	}
 	return str[s : s+e]
+}
+
+func searchExamples() string {
+	examples := []string{
+		"nrlp search -f mylog.log --level error",
+		"nrlp search -f mylog.log --custom key=value",
+		"nrlp search -f mylog.log --before \"2019-10-18 15:05:00\" --after \"2019-10-18 15:00:00\"",
+	}
+	s := ""
+	for _, e := range examples {
+		s += fmt.Sprintf("  %s\n", e)
+	}
+	return s[:len(s)-1]
 }
