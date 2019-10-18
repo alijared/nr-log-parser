@@ -11,7 +11,7 @@ const EXECUTION_ERROR = "ExecutionError"
 
 type CMDError interface {
 	Error() string
-	Type()  string
+	Type() string
 	Usage() string
 }
 

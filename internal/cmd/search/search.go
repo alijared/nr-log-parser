@@ -1,7 +1,6 @@
 package search
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io/ioutil"
@@ -13,12 +12,14 @@ import (
 	"github.com/cheggaaa/pb/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/alijared/nr-log-parser/internal/context"
+	"github.com/alijared/nr-log-parser/internal/progressbar"
+	"github.com/alijared/nr-log-parser/internal/scanner"
 	"github.com/alijared/nr-log-parser/pkg/errors"
 )
 
 const (
-	LOG_FILE_OUTPUT   = "nrlp.log"
-	TIME_INPUT_FORMAT = "2006-01-02 15:04:05"
+	LOG_FILE_OUTPUT = "nrlp.log"
 )
 
 var (
@@ -84,29 +85,30 @@ func search(_ *cobra.Command, _ []string) error {
 			log.Printf("Unable to close log file: %s", err)
 		}
 	}()
-	bar, err := getPB(f)
-	if err != nil {
-		return err
-	}
 
-	scanner := getScanner(f)
 	scanCount := 0
 	matchCount := 0
 	var buffer []byte
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		line = append(line, '\n')
-		if inLine(line, attrs...) {
-			buffer = append(buffer, line...)
-			matchCount++
+	if err := progressbar.Wrap(f, func(bar *pb.ProgressBar) error {
+		scnr := scanner.New(f)
+		for scnr.Scan() {
+			line := scnr.Bytes()
+			line = append(line, '\n')
+			if inLine(line, attrs...) {
+				buffer = append(buffer, line...)
+				matchCount++
+			}
+			bar.Add(len(line))
+			scanCount++
 		}
-		bar.Add(len(line))
-		scanCount++
+		if err := scnr.Err(); err != nil {
+			return errors.NewExecutionError("error scanning file: %s", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
-	bar.Finish()
-	if err := scanner.Err(); err != nil {
-		return errors.NewExecutionError("error scanning file: %s", err)
-	}
+
 	fmt.Printf("Scanned %d lines, matched %d lines\n", scanCount, matchCount)
 	if buffer != nil {
 		if err := ioutil.WriteFile(outputFile, buffer, 0644); err != nil {
@@ -124,7 +126,7 @@ func inLine(line []byte, attrs ...[]byte) bool {
 		}
 	}
 	if hasTimeFilter {
-		t, err := parseTime(line)
+		t, err := scanner.ParseTime(line)
 		if err != nil {
 			log.Printf("unable to parse log time: %s", err)
 			return false
@@ -141,42 +143,6 @@ func inLine(line []byte, attrs ...[]byte) bool {
 		}
 	}
 	return true
-}
-
-func getPB(f *os.File) (*pb.ProgressBar, error) {
-	filesize, err := fileSize(f)
-	if err != nil {
-		return nil, err
-	}
-
-	bar := pb.New64(filesize)
-	bar.SetRefreshRate(time.Millisecond)
-	return bar.Start(), nil
-}
-
-func fileSize(f *os.File) (int64, error) {
-	fi, err := f.Stat()
-	if err != nil {
-		return 0, errors.NewExecutionError("unable to get log file info: %s", err)
-	}
-	return fi.Size(), nil
-}
-
-func getScanner(f *os.File) *bufio.Scanner {
-	scanner := bufio.NewScanner(f)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-	return scanner
-}
-
-func parseTime(line []byte) (time.Time, error) {
-	fields := bytes.Fields(line)
-	t, err := time.Parse(time.RFC3339, getStringInBetween(string(fields[0]), "\"", "\""))
-	if err != nil {
-		return time.Time{}, err
-	}
-	return t.UTC(), nil
-
 }
 
 func validateFlags(_ *cobra.Command, _ []string) error {
@@ -217,7 +183,7 @@ func validateTimeFilter() error {
 }
 
 func setTime(t *time.Time, s string) error {
-	ct, err := time.Parse(TIME_INPUT_FORMAT, s)
+	ct, err := time.Parse(context.DateFormat(), s)
 	if err != nil {
 		return err
 	}
@@ -228,19 +194,6 @@ func setTime(t *time.Time, s string) error {
 
 func searchAttribute(prefix, value string) []byte {
 	return []byte(fmt.Sprintf("%s=%s", prefix, value))
-}
-
-func getStringInBetween(str string, start string, end string) string {
-	s := strings.Index(str, start)
-	if s == -1 {
-		return ""
-	}
-	s += len(start)
-	e := strings.Index(str[s:], end)
-	if e == -1 {
-		return ""
-	}
-	return str[s : s+e]
 }
 
 func searchExamples() string {
